@@ -1,0 +1,63 @@
+#!/bin/bash
+
+export DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
+export NAME=${1}
+
+CONFIG_DIR=${DIR}/config
+ETC_DIR=${DIR}/etc/${NAME}
+LOG_DIR=${DIR}/var/log/${NAME}
+WORK_DIR=${DIR}/var/work/${NAME}
+
+export HOSTNAME=`hostname -s`
+export PORT=0
+export LOCATOR=vf0[10334]
+
+export MAX_HEAP=2g
+export CLASSPATH="$(ls -1 ${DIR}/lib/*.jar | tr '\n' ':' | head -c -1)"
+
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:MaxNewSize=768m"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:NewSize=768m"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+UseParNewGC"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+UseConcMarkSweepGC"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:ParallelGCThreads=6"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+DoEscapeAnalysis"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+CMSClassUnloadingEnabled"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+UnlockDiagnosticVMOptions"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:ParGCCardsPerStrideChunk=32768"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+ScavengeBeforeFullGC"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+OptimizeStringConcat"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:MaxPermSize=128m"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+DisableExplicitGC"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:+UseLargePages"
+export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-Xdebug --J='-agentlib:jdwp=transport=dt_socket,server=y,address=9000,suspend=n'"
+#export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-verbose:gc --J=-XX:+PrintGCDetails --J=-XX:+PrintGCDateStamps --J=-Xloggc:${LOG_DIR}/gc-${NAME}-${HOSTNAME}.log"
+
+
+if [[ $# -eq 0 ]] ; then
+    echo "Usage: $0 <instance_name>"
+    exit 1
+fi
+
+mkdir -p ${ETC_DIR}
+mkdir -p ${LOG_DIR}
+mkdir -p ${WORK_DIR}
+
+cp ${CONFIG_DIR}/gemfire-server.properties ${ETC_DIR}/gemfire.properties
+cp ${CONFIG_DIR}/cache.xml ${ETC_DIR}
+
+for s in `printenv`; do
+        IFS='=' read -ra ENVVAR <<< "${s}"
+        if [[ ${ENVVAR[0]} != *"%"* && ${ENVVAR[1]} != *"%"* ]]; then
+                #echo "s%{{${ENVVAR[0]}}}%${ENVVAR[1]}%g"
+                sed -i "s%{{${ENVVAR[0]}}}%${ENVVAR[1]}%g" ${ETC_DIR}/gemfire.properties
+        fi
+done
+
+gfsh start server --name=${NAME} --server-port=${PORT} --dir=${WORK_DIR} \
+	--cache-xml-file=${ETC_DIR}/cache.xml \
+	--properties-file=${ETC_DIR}/gemfire.properties \
+	--locators=$LOCATOR \
+	--classpath=${CLASSPATH} \
+	--max-heap=${MAX_HEAP} --initial-heap=${MAX_HEAP} \
+	$SERVER_JAVA_OPTS
+

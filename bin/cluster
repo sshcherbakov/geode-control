@@ -1,0 +1,83 @@
+#!/bin/bash
+
+export DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
+
+CMD=${1}
+
+if [[ $# -eq 0 ]] ; then
+    echo "Usage: $0 {start|stop|logs|deploy|clean}"
+    exit 1
+fi
+
+BIN_DIR=${DIR}/bin
+CONFIG_DIR=${DIR}/config
+FILE_READ_CMD=cat
+STAMP="logs_$(date +%F_%H%M%S)"
+
+[[ ${CMD} == "stop" ]] && FILE_READ_CMD=tac
+[[ ${CMD} == "logs" ]] && mkdir -p ${DIR}/var/tmp/${STAMP}
+
+TPUT='tput -T xterm-color'
+txtund=$(${TPUT} sgr 0 1)          # Underline
+txtbld=$(${TPUT} bold)             # Bold
+txtrst=$(${TPUT} sgr0)             # Reset
+
+${FILE_READ_CMD} ${CONFIG_DIR}/hostlist |  while read -ra MAPPING; do
+
+	#IFS=" " read -ra MAPPING <<< "${line}"
+	HOST="${MAPPING[0]}"
+	ROLE="${MAPPING[1]}"
+	NAME="${MAPPING[2]}"
+
+	case $CMD in
+		clean)
+                        echo -e "${txtbld}\n######################################################"
+                        echo -e "# Cleaning Host: ${HOST} Instance: ${NAME}"
+                        echo "######################################################${txtrst}"
+			COMMAND="rm -rf ${DIR}/var/log/${NAME}"
+			ssh ${HOST} PATH=${PATH} COMMAND="'${COMMAND}'" 'bash -s' << 'END'
+                                $COMMAND
+END
+			COMMAND="rm -rf ${DIR}/var/work/${NAME}"
+			ssh ${HOST} PATH=${PATH} COMMAND="'${COMMAND}'" 'bash -s' << 'END'
+                                $COMMAND
+END
+			;;
+		deploy)
+			if [[ "${HOST}" != "$(hostname -s)" ]]; then
+                		echo -e "${txtbld}\n######################################################"
+                		echo -e "# Copying config to Host: ${HOST}"
+                		echo "######################################################${txtrst}"
+
+                		scp -r ${DIR}/lib ${HOST}:${DIR}
+                		scp -r ${BIN_DIR} ${HOST}:${DIR}
+                		scp -r ${CONFIG_DIR} ${HOST}:${DIR}
+			fi
+			;;
+		logs)
+			scp ${HOST}:${DIR}/var/log/${NAME}/*.log ${DIR}/var/tmp/${STAMP}
+			scp ${HOST}:${DIR}/var/log/${NAME}/*.gfs ${DIR}/var/tmp/${STAMP}
+			;;
+		*)
+			if [[ "${CMD}" == "start" ]]; then
+				COMMAND="mkdir -p ${DIR}/var/log/${NAME}"
+				ssh ${HOST} PATH=${PATH} COMMAND="'${COMMAND}'" 'bash -s' << 'END'
+                                	$COMMAND
+END
+				COMMAND="mkdir -p ${DIR}/var/work/${NAME}"
+				ssh ${HOST} PATH=${PATH} COMMAND="'${COMMAND}'" 'bash -s' << 'END'
+                                	$COMMAND
+END
+			fi 
+			COMMAND="${BIN_DIR}/${CMD}-${ROLE} ${NAME}"
+			echo -e "${txtbld}\n######################################################"
+			echo -e "# Running command '${COMMAND}' on Host: ${HOST}"
+			echo "######################################################${txtrst}"
+
+			ssh ${HOST} PATH=${PATH} COMMAND="'${COMMAND}'" 'bash -s' << 'END'
+				$COMMAND
+END
+	esac
+done
+
+[[ ${CMD} == "logs" ]] && (tar -C ${DIR}/var/tmp -czvf ${STAMP}.tgz .; rm -rf ${DIR}/var/tmp)
