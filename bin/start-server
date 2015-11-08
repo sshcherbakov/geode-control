@@ -10,10 +10,13 @@ WORK_DIR=${DIR}/var/work/${NAME}
 
 export HOSTNAME=`hostname -s`
 export PORT=0
-export LOCATOR=vf0[10334]
+export LOCATOR=vf511[10334]
+export CLASSPATH=""
 
 export MAX_HEAP=2g
-export CLASSPATH="$(ls -1 ${DIR}/lib/*.jar | tr '\n' ':' | head -c -1)"
+if ls ${DIR}/lib/*.jar 1> /dev/null 2>&1; then
+	export CLASSPATH="--classpath=$(ls -1 ${DIR}/lib/*.jar | tr '\n' ':' | head -c -1)"
+fi
 
 export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:MaxNewSize=768m"
 export SERVER_JAVA_OPTS="$SERVER_JAVA_OPTS --J=-XX:NewSize=768m"
@@ -57,7 +60,7 @@ gfsh start server --name=${NAME} --server-port=${PORT} --dir=${WORK_DIR} \
 	--cache-xml-file=${ETC_DIR}/cache.xml \
 	--properties-file=${ETC_DIR}/gemfire.properties \
 	--locators=$LOCATOR \
-	--classpath=${CLASSPATH} \
+	${CLASSPATH} \
 	--max-heap=${MAX_HEAP} --initial-heap=${MAX_HEAP} \
 	$SERVER_JAVA_OPTS
 
